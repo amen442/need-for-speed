@@ -59,7 +59,7 @@ def handle_client(conn, addr):
                         "type": "HUMAN"
                     }
 
-                    # إضافة AI فقط مرة واحدة
+
                     if mode.strip() == "AI" and not ai_thread_started:
                         ai_player_id = player_id + 1
                         players[ai_player_id] = {
