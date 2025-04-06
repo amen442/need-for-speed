@@ -12,7 +12,7 @@ height = 500
 screen = pygame.display.set_mode((width, height))
 pygame.display.set_caption('Car Game - Client')
 
-# الألوان والصور
+
 gray = (100, 100, 100)
 green = (76, 208, 56)
 red = (200, 0, 0)
@@ -31,7 +31,7 @@ vehicle_imgs = {
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect((HOST, PORT))
 
-# اختيار نمط اللعبة
+
 font = pygame.font.Font(None, 36)
 mode_selected = False
 game_mode = "HUMAN"
@@ -60,7 +60,7 @@ while not mode_selected:
             pygame.quit()
             exit()
 
-# إرسال نمط اللعبة للسيرفر
+
 sock.sendall(f"JOIN:{game_mode}".encode())
 response = sock.recv(1024).decode()
 player_id = int(response.split(":")[1]) if response.startswith("ID:") else None
@@ -103,17 +103,17 @@ while running:
     screen.fill(green)
     pygame.draw.rect(screen, gray, (100, 0, 300, 500))
 
-    # رسم اللاعبين
+
     for pid, p in game_state["players"].items():
         if p["alive"]:
             screen.blit(player_car_img, (p["x"], p["y"]))
 
-    # رسم المركبات
+
     for v in game_state["vehicles"]:
         if v["type"] in vehicle_imgs:
             screen.blit(vehicle_imgs[v["type"]], (v["x"], v["y"]))
 
-    # النقاط ورسالة النهاية
+
     font = pygame.font.Font(None, 36)
     score_text = font.render(f"Score: {player_score}", True, white)
     screen.blit(score_text, (10, 10))
