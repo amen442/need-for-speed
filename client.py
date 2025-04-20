@@ -3,8 +3,8 @@ from pygame.locals import *
 import socket
 import json
 
-HOST = '192.168.150.37'
-PORT = 9999
+HOST = '192.168.226.37'
+PORT = 6666
 
 pygame.init()
 width = 500
