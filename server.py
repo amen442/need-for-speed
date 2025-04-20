@@ -3,9 +3,12 @@ import threading
 import random
 import json
 import time
+from stable_baselines3 import DQN
+from CarGameEnv import CarGameEnv
+import numpy as np
 
-HOST = '192.168.150.37'
-PORT = 9999
+HOST = '192.168.226.37'
+PORT = 6666
 
 players = {}
 vehicles = []
@@ -13,28 +16,30 @@ speed = 10
 lock = threading.Lock()
 ai_thread_started = False
 
-def ai_controller():
+# Load the trained DRL model
+model = DQN.load("drl_car_agent.zip")
+env = CarGameEnv()
+
+def ai_controller_drl():
     global speed
     while True:
         with lock:
             for pid, player in players.items():
                 if player.get('type') == 'AI' and player['alive']:
-                    dangers = {150: False, 250: False, 350: False}
-                    for v in vehicles:
-                        if v['y'] < player['y'] + 150:
-                            dangers[v['x']] = True
+                    # update environment state
+                    env.player_x = player['x']
+                    env.player_y = player['y']
+                    env.vehicles = vehicles.copy()
 
-                    safe_lanes = [lane for lane, danger in dangers.items() if not danger]
-                    if safe_lanes:
-                        target_x = random.choice(safe_lanes)
-                        if target_x < player['x'] and player['x'] > 150:
-                            player['x'] -= 100
-                        elif target_x > player['x'] and player['x'] < 350:
-                            player['x'] += 100
-                    else:
-                        if player['x'] != 250:
-                            player['x'] = 250
-        time.sleep(0.5)
+                    obs = env._get_obs()
+                    action, _ = model.predict(obs, deterministic=True)
+
+                    # Apply action to AI player
+                    if action == 1 and player['x'] > 150:
+                        player['x'] -= 100
+                    elif action == 2 and player['x'] < 350:
+                        player['x'] += 100
+        time.sleep(0.1)
 
 def handle_client(conn, addr):
     global ai_thread_started
@@ -59,7 +64,6 @@ def handle_client(conn, addr):
                         "type": "HUMAN"
                     }
 
-
                     if mode.strip() == "AI" and not ai_thread_started:
                         ai_player_id = player_id + 1
                         players[ai_player_id] = {
@@ -69,7 +73,7 @@ def handle_client(conn, addr):
                             "alive": True,
                             "type": "AI"
                         }
-                        threading.Thread(target=ai_controller, daemon=True).start()
+                        threading.Thread(target=ai_controller_drl, daemon=True).start()
                         ai_thread_started = True
 
                 print(f"Player {player_id} ({mode.strip()}) joined the game.")
