@@ -1,150 +1,132 @@
+import pygame
+from pygame.locals import *
 import socket
-import threading
-import random
 import json
-import time
-from stable_baselines3 import DQN
-from CarGameEnv import CarGameEnv
-import numpy as np
 
-HOST = '192.168.226.37'
-PORT = 6666
+HOST = '192.168.196.37'
+PORT = 9999
 
-players = {}
-vehicles = []
-speed = 10
-lock = threading.Lock()
-ai_thread_started = False
+pygame.init()
+width = 500
+height = 500
+screen = pygame.display.set_mode((width, height))
+pygame.display.set_caption('Car Game - Client')
 
-# Load the trained DRL model
-model = DQN.load("drl_car_agent.zip")
-env = CarGameEnv()
 
-def ai_controller_drl():
-    global speed
-    while True:
-        with lock:
-            for pid, player in players.items():
-                if player.get('type') == 'AI' and player['alive']:
-                    # update environment state
-                    env.player_x = player['x']
-                    env.player_y = player['y']
-                    env.vehicles = vehicles.copy()
+gray = (100, 100, 100)
+green = (76, 208, 56)
+red = (200, 0, 0)
+white = (255, 255, 255)
+yellow = (255, 255, 0)
 
-                    obs = env._get_obs()
-                    action, _ = model.predict(obs, deterministic=True)
+player_car_img = pygame.image.load("car.png")
+player_car_img = pygame.transform.scale(player_car_img, (50, 50))
 
-                    # Apply action to AI player
-                    if action == 1 and player['x'] > 150:
-                        player['x'] -= 100
-                    elif action == 2 and player['x'] < 350:
-                        player['x'] += 100
-        time.sleep(0.1)
+vehicle_imgs = {
+    "taxi": pygame.transform.scale(pygame.image.load("taxi.png"), (50, 50)),
+    "van": pygame.transform.scale(pygame.image.load("van.png"), (50, 50)),
+    "semi_trailer": pygame.transform.scale(pygame.image.load("semi_trailer.png"), (50, 50))
+}
 
-def handle_client(conn, addr):
-    global ai_thread_started
-    print(f"Connected by {addr}")
-    player_id = None
-    with conn:
-        while True:
-            data = conn.recv(1024)
-            if not data:
-                break
-            message = data.decode()
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.connect((HOST, PORT))
 
-            if message.startswith("JOIN"):
-                _, mode = message.split(":")
-                with lock:
-                    player_id = len(players) + 1
-                    players[player_id] = {
-                        "x": 250,
-                        "y": 400,
-                        "score": 0,
-                        "alive": True,
-                        "type": "HUMAN"
-                    }
 
-                    if mode.strip() == "AI" and not ai_thread_started:
-                        ai_player_id = player_id + 1
-                        players[ai_player_id] = {
-                            "x": 150,
-                            "y": 400,
-                            "score": 0,
-                            "alive": True,
-                            "type": "AI"
-                        }
-                        threading.Thread(target=ai_controller_drl, daemon=True).start()
-                        ai_thread_started = True
+font = pygame.font.Font(None, 36)
+mode_selected = False
+game_mode = "HUMAN"
 
-                print(f"Player {player_id} ({mode.strip()}) joined the game.")
-                conn.sendall(f"ID:{player_id}".encode())
+while not mode_selected:
+    screen.fill(green)
+    mode_text1 = font.render("1 - Play vs Human", True, white)
+    mode_text2 = font.render("2 - Play vs AI", True, white)
+    note_text = font.render("Click inside then press 1 or 2", True, white)
+    screen.blit(mode_text1, (150, 200))
+    screen.blit(mode_text2, (150, 250))
+    screen.blit(note_text, (100, 300))
+    pygame.display.update()
 
-            elif message.startswith("MOVE"):
-                _, pid, direction = message.split(":")
-                pid = int(pid)
-                with lock:
-                    if pid in players and players[pid]["alive"]:
-                        if direction == "LEFT" and players[pid]["x"] > 150:
-                            players[pid]["x"] -= 100
-                        elif direction == "RIGHT" and players[pid]["x"] < 350:
-                            players[pid]["x"] += 100
+    for event in pygame.event.get():
+        if event.type == KEYDOWN:
+            key_name = pygame.key.name(event.key)
+            print("Pressed:", key_name)
+            if key_name in ['1', 'kp 1']:
+                game_mode = "HUMAN"
+                mode_selected = True
+            elif key_name in ['2', 'kp 2']:
+                game_mode = "AI"
+                mode_selected = True
+        elif event.type == QUIT:
+            pygame.quit()
+            exit()
 
-            elif message == "GET_STATE":
-                with lock:
-                    game_state = {
-                        "players": players,
-                        "vehicles": vehicles,
-                        "speed": speed
-                    }
-                    conn.sendall(json.dumps(game_state).encode())
 
-            elif message == "RESTART" and player_id:
-                with lock:
-                    if player_id in players:
-                        players[player_id]["alive"] = True
-                        players[player_id]["x"] = 250
-                        players[player_id]["y"] = 400
-                        players[player_id]["score"] = 0
+sock.sendall(f"JOIN:{game_mode}".encode())
+response = sock.recv(1024).decode()
+player_id = int(response.split(":")[1]) if response.startswith("ID:") else None
 
-def spawn_vehicles():
-    global vehicles, speed
-    lanes = [150, 250, 350]
-    while True:
-        if len(vehicles) < 2 + len(players) // 2:
-            vehicle = {
-                "x": random.choice(lanes),
-                "y": -50,
-                "type": random.choice(["taxi", "van", "semi_trailer"])
-            }
-            with lock:
-                vehicles.append(vehicle)
+running = True
+game_over = False
+clock = pygame.time.Clock()
+last_score = 0
 
-        with lock:
-            for vehicle in list(vehicles):
-                vehicle["y"] += speed
-                if vehicle["y"] > 500:
-                    vehicles.remove(vehicle)
-                    for pid, player in players.items():
-                        if player["alive"] and player["type"] == "HUMAN":
-                            player["score"] += 1
-                            if player["score"] % 5 == 0:
-                                speed += 1
+while running:
+    for event in pygame.event.get():
+        if event.type == QUIT:
+            running = False
+        if event.type == KEYDOWN:
+            if not game_over:
+                if event.key == K_LEFT:
+                    sock.sendall(f"MOVE:{player_id}:LEFT".encode())
+                elif event.key == K_RIGHT:
+                    sock.sendall(f"MOVE:{player_id}:RIGHT".encode())
+            else:
+                if event.key == K_y:
+                    sock.sendall("RESTART".encode())
+                    game_over = False
+                elif event.key == K_n:
+                    running = False
 
-                for pid, player in players.items():
-                    if (player["alive"] and 
-                        abs(player["x"] - vehicle["x"]) < 50 and 
-                        abs(player["y"] - vehicle["y"]) < 50):
-                        player["alive"] = False
-        time.sleep(0.1)
+    try:
+        sock.sendall("GET_STATE".encode())
+        game_state = json.loads(sock.recv(4096).decode())
+    except:
+        break
 
-if __name__ == "__main__":
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind((HOST, PORT))
-        s.listen()
-        print(f"Server listening on {HOST}:{PORT}")
+    if str(player_id) not in game_state["players"]:
+        break
 
-        threading.Thread(target=spawn_vehicles, daemon=True).start()
+    player_data = game_state["players"][str(player_id)]
+    game_over = not player_data["alive"]
+    player_score = player_data["score"]
 
-        while True:
-            conn, addr = s.accept()
-            threading.Thread(target=handle_client, args=(conn, addr), daemon=True).start()
+    screen.fill(green)
+    pygame.draw.rect(screen, gray, (100, 0, 300, 500))
+
+
+    for pid, p in game_state["players"].items():
+        if p["alive"]:
+            screen.blit(player_car_img, (p["x"], p["y"]))
+
+
+    for v in game_state["vehicles"]:
+        if v["type"] in vehicle_imgs:
+            screen.blit(vehicle_imgs[v["type"]], (v["x"], v["y"]))
+
+
+    font = pygame.font.Font(None, 36)
+    score_text = font.render(f"Score: {player_score}", True, white)
+    screen.blit(score_text, (10, 10))
+
+    if game_over:
+        font = pygame.font.Font(None, 74)
+        game_over_text = font.render("Game Over", True, red)
+        screen.blit(game_over_text, (width//2 - 140, height//2 - 120))
+        restart_text = font.render("Restart? (Y/N)", True, white)
+        screen.blit(restart_text, (width//2 - 160, height//2 + 50))
+
+    pygame.display.update()
+    clock.tick(30)
+
+pygame.quit()
+
