@@ -16,7 +16,7 @@ speed = 10
 lock = threading.Lock()
 ai_thread_started = False
 
-# Load the trained DRL model
+
 model = DQN.load("drl_car_agent.zip")
 env = CarGameEnv()
 
@@ -28,14 +28,14 @@ def ai_controller_drl():
             for pid, player in players.items():
                 if player.get('type') == 'AI':
                     if not player['alive']:
-                        # Restart AI player automatically
+                        
                         player['alive'] = True
                         player['x'] = 150
                         player['y'] = 400
                         player['score'] = 0
                         continue
 
-                    # update environment state
+                    
                     env.player_x = player['x']
                     env.player_y = player['y']
                     env.vehicles = vehicles.copy()
@@ -73,7 +73,7 @@ def handle_client(conn, addr):
                         "type": "HUMAN"
                     }
 
-                    # نضيفو AI كان إذا فعلاً mode هو AI وما فماش غير اللاعب الأول
+                    
                     if mode.strip() == "AI" and not ai_thread_started and len(players) == 1:
                         ai_player_id = player_id + 1
                         players[ai_player_id] = {
