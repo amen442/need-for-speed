@@ -59,4 +59,4 @@ class CarGameEnv(gymnasium.Env):
         return self._get_obs(), reward, False, False, {}
 
     def render(self):
-        return
+        pass
